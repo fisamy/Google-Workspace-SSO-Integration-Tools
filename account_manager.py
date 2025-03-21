@@ -17,7 +17,7 @@ class GmailAccountManager:
             'https://www.googleapis.com/auth/gmail.modify'
         ]
 
-    def add_account(self, email: str) -> bool:
+    def add_account(self, email: str, cookie_manager=None) -> bool:
         """Add a new Gmail account using OAuth2."""
         try:
             flow = InstalledAppFlow.from_client_config(
