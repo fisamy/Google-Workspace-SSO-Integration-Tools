@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
+from account_manager import GmailAccountManager
 
 from gmail_api import authenticate_gmail, get_gmail_service, get_messages
 from data_processor import process_emails, categorize_emails, get_email_metrics
@@ -36,6 +37,34 @@ if "fetch_count" not in st.session_state:
 
 def main():
     st.title("Gmail Analytics Dashboard")
+    
+    # Initialize account manager
+    if 'account_manager' not in st.session_state:
+        st.session_state.account_manager = GmailAccountManager()
+    
+    # Account management section
+    with st.sidebar:
+        st.header("Account Management")
+        new_email = st.text_input("Add Gmail Account")
+        if st.button("Add Account"):
+            if new_email:
+                if st.session_state.account_manager.add_account(new_email):
+                    st.success(f"Successfully added {new_email}")
+                    st.rerun()
+        
+        st.header("Account Status")
+        for email in st.session_state.account_manager.list_accounts():
+            status = st.session_state.account_manager.get_account_status(email)
+            with st.expander(f"📧 {email}"):
+                st.write(f"Status: {status['status']}")
+                if status['status'] == 'Active':
+                    st.write(f"Total Messages: {status['messages_total']}")
+                    st.write(f"Total Threads: {status['threads_total']}")
+                if st.button(f"Verify {email}", key=f"verify_{email}"):
+                    if st.session_state.account_manager.verify_smtp(email):
+                        st.success("Account verified successfully")
+                    else:
+                        st.error("Account verification failed")
     
     # Sidebar for authentication and filtering
     with st.sidebar:
