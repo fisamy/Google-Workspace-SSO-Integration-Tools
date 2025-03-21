@@ -562,6 +562,12 @@ elif menu == "API Keys":
     - [Hunter.io API](https://hunter.io/api-documentation)
     """)
 
+elif menu == "Cookie Settings":
+    st.title("Cookie Settings")
+    
+    # Display the cookie management page
+    cookie_ui.display_management_page()
+
 else:  # Help
     st.title("Help & Documentation")
     
