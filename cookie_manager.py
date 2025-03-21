@@ -1,71 +1,55 @@
+"""
+Cookie Management System for Streamlit Applications
 
-from typing import Dict, Optional, List, Any, Union
+This module provides cookie management capabilities for Streamlit applications,
+including cookie categorization, consent management, and storage.
+"""
 import streamlit as st
-from datetime import datetime, timedelta
 import json
-import uuid
-import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Cookie categories based on common industry standards
+# Define cookie categories with descriptions
 COOKIE_CATEGORIES = {
     "necessary": {
-        "name": "Necessary",
-        "description": "Essential cookies required for basic website functionality. Cannot be disabled.",
-        "required": True
+        "name": "Necessary Cookies",
+        "description": "These cookies are required for the website to function properly and cannot be disabled."
     },
     "functional": {
-        "name": "Functional",
-        "description": "Cookies that enhance functionality and personalization.",
-        "required": False
+        "name": "Functional Cookies",
+        "description": "These cookies enable personalized features and functionality."
     },
     "analytics": {
-        "name": "Analytics",
-        "description": "Cookies used to analyze site usage and improve performance.",
-        "required": False
+        "name": "Analytics Cookies",
+        "description": "These cookies help us understand how visitors interact with the website."
     },
     "marketing": {
-        "name": "Marketing",
-        "description": "Cookies used for marketing and advertising purposes.",
-        "required": False
+        "name": "Marketing Cookies",
+        "description": "These cookies are used for marketing purposes, such as showing relevant advertisements."
     },
     "third_party": {
-        "name": "Third Party",
-        "description": "Cookies set by third-party services and embedded content.",
-        "required": False
+        "name": "Third-Party Cookies",
+        "description": "These cookies are set by third-party services or content embedded on our pages."
     }
 }
 
 class CookieManager:
     def __init__(self):
+        """Initialize the cookie manager and set up session state."""
         # Initialize session state for cookies
-        if 'cookies' not in st.session_state:
+        if "cookies" not in st.session_state:
             st.session_state.cookies = {}
-        
-        # Initialize session state for cookie preferences
-        if 'cookie_preferences' not in st.session_state:
-            st.session_state.cookie_preferences = {
-                "necessary": True,  # Always required
-                "functional": True,  # Default to enabled
-                "analytics": False,
-                "marketing": False,
-                "third_party": False
-            }
             
-        # Initialize session state for consent status
-        if 'cookie_consent' not in st.session_state:
+        # Initialize session state for consent
+        if "cookie_consent" not in st.session_state:
             st.session_state.cookie_consent = {
-                "status": None,  # None, "granted", "denied"
-                "timestamp": None,
-                "version": "1.0",
-                "id": str(uuid.uuid4())
+                "status": "unknown",  # 'unknown', 'granted', 'denied'
+                "date": datetime.utcnow().isoformat(),
+                "preferences": {category: False for category in COOKIE_CATEGORIES.keys()}
             }
-            
-        self.default_expiry_days = 30
-        
+            # Necessary cookies are always enabled
+            st.session_state.cookie_consent["preferences"]["necessary"] = True
+
     def set_cookie_with_options(self, name: str, value: str, category: str = "necessary", options: Dict = None) -> Dict:
         """
         Set a cookie with custom options and categorization.
@@ -79,55 +63,53 @@ class CookieManager:
         Returns:
             Dict with operation result
         """
-        if options is None:
-            options = {}
-            
-        # Check cookie consent and category
-        if category != "necessary" and not self._check_category_consent(category):
-            logger.info(f"Cookie '{name}' not set: user did not consent to {category} cookies")
-            return {
-                "success": False,
-                "reason": f"User did not consent to {category} cookies"
-            }
+        # Validate category
+        if category not in COOKIE_CATEGORIES:
+            return {"error": f"Invalid cookie category: {category}"}
         
-        # Set default options and add category information
-        expiry = datetime.now() + timedelta(days=options.get('expires_days', self.default_expiry_days))
-        st.session_state.cookies[name] = {
-            'value': value,
-            'expires': expiry.isoformat(),
-            'path': options.get('path', '/'),
-            'secure': options.get('secure', True),
-            'httponly': options.get('httponly', True),
-            'category': category,
-            'created': datetime.now().isoformat(),
-            'description': options.get('description', None)
+        # Check if consent allows setting this cookie
+        if not self._check_category_consent(category):
+            return {"error": f"Consent not given for {category} cookies"}
+        
+        # Default options
+        cookie_options = {
+            "value": value,
+            "category": category,
+            "created": datetime.utcnow().isoformat(),
+            "expires": (datetime.utcnow() + timedelta(days=30)).isoformat()
         }
         
-        logger.debug(f"Cookie '{name}' set in category '{category}'")
-        return {
-            "success": True,
-            "cookie": name
-        }
+        # Add description from category
+        cookie_options["description"] = COOKIE_CATEGORIES[category]["description"]
+        
+        # Add custom options
+        if options:
+            cookie_options.update(options)
+        
+        # Store cookie
+        st.session_state.cookies[name] = cookie_options
+        
+        return {"success": True, "message": f"Cookie '{name}' set successfully"}
 
     def get_cookie_details(self, name: str) -> Optional[Dict]:
         """Get full cookie details if it exists, hasn't expired, and consent is given."""
-        if name in st.session_state.cookies:
-            cookie = st.session_state.cookies[name]
-            
-            # Check expiration
-            expiry = datetime.fromisoformat(cookie['expires'])
-            if datetime.now() >= expiry:
-                del st.session_state.cookies[name]
+        # Check if cookie exists
+        if name not in st.session_state.cookies:
+            return None
+        
+        cookie = st.session_state.cookies[name]
+        
+        # Check if expired
+        if "expires" in cookie:
+            expiry = datetime.fromisoformat(cookie["expires"])
+            if expiry < datetime.utcnow():
                 return None
-                
-            # Check consent for non-necessary cookies
-            category = cookie.get('category', 'necessary')
-            if category != 'necessary' and not self._check_category_consent(category):
-                logger.debug(f"Access to cookie '{name}' blocked due to consent settings")
-                return None
-                
-            return cookie
-        return None
+        
+        # Check consent
+        if not self._check_category_consent(cookie.get("category", "necessary")):
+            return None
+        
+        return cookie
 
     def has_cookie(self, name: str) -> bool:
         """Check if a valid cookie exists and consent allows access."""
@@ -144,21 +126,24 @@ class CookieManager:
         Returns:
             True if cookie was updated, False otherwise
         """
-        if name in st.session_state.cookies:
-            cookie = st.session_state.cookies[name]
+        # Check if cookie exists
+        if name not in st.session_state.cookies:
+            return False
+        
+        # Get current details
+        cookie = st.session_state.cookies[name]
+        
+        # Set new expiry
+        if days is None:
+            days = 30  # Default extension
             
-            # Check consent for non-necessary cookies
-            category = cookie.get('category', 'necessary')
-            if category != 'necessary' and not self._check_category_consent(category):
-                logger.debug(f"Extension of cookie '{name}' blocked due to consent settings")
-                return False
-                
-            days = days or self.default_expiry_days
-            expiry = datetime.now() + timedelta(days=days)
-            cookie['expires'] = expiry.isoformat()
-            logger.debug(f"Cookie '{name}' expiry extended to {expiry.isoformat()}")
-            return True
-        return False
+        new_expiry = datetime.utcnow() + timedelta(days=days)
+        cookie["expires"] = new_expiry.isoformat()
+        
+        # Update cookie
+        st.session_state.cookies[name] = cookie
+        
+        return True
 
     def set_cookie(self, name: str, value: str, category: str = "necessary", expires_days: int = 30, description: str = None) -> Dict:
         """
@@ -175,20 +160,24 @@ class CookieManager:
             Dict with operation result
         """
         options = {
-            'expires_days': expires_days,
-            'description': description
+            "expires": (datetime.utcnow() + timedelta(days=expires_days)).isoformat()
         }
+        
+        if description:
+            options["description"] = description
+            
         return self.set_cookie_with_options(name, value, category, options)
 
     def get_cookie(self, name: str) -> Optional[str]:
         """Get cookie value if it exists, hasn't expired, and consent allows access."""
         details = self.get_cookie_details(name)
-        return details['value'] if details else None
+        if details and "value" in details:
+            return details["value"]
+        return None
 
     def delete_cookie(self, name: str) -> None:
         """Delete a cookie if it exists."""
         if name in st.session_state.cookies:
-            logger.debug(f"Cookie '{name}' deleted")
             del st.session_state.cookies[name]
 
     def get_all_cookies(self, include_details: bool = False) -> Dict:
@@ -201,24 +190,26 @@ class CookieManager:
         Returns:
             Dict of cookies
         """
-        valid_cookies = {}
-        now = datetime.now()
+        result = {}
         
-        for name, cookie in st.session_state.cookies.items():
-            # Check expiration
-            expiry = datetime.fromisoformat(cookie['expires'])
-            if now >= expiry:
-                del st.session_state.cookies[name]
+        for name, details in st.session_state.cookies.items():
+            # Check if expired
+            if "expires" in details:
+                expiry = datetime.fromisoformat(details["expires"])
+                if expiry < datetime.utcnow():
+                    continue
+            
+            # Check consent
+            if not self._check_category_consent(details.get("category", "necessary")):
                 continue
-                
-            # Check consent for non-necessary cookies
-            category = cookie.get('category', 'necessary')
-            if category != 'necessary' and not self._check_category_consent(category):
-                continue
-                
-            valid_cookies[name] = cookie if include_details else cookie['value']
+            
+            # Add to result
+            if include_details:
+                result[name] = details
+            else:
+                result[name] = details.get("value")
         
-        return valid_cookies
+        return result
 
     def get_cookies_by_category(self, category: str, include_details: bool = False) -> Dict:
         """
@@ -231,26 +222,30 @@ class CookieManager:
         Returns:
             Dict of cookies in the requested category
         """
-        if not self._check_category_consent(category) and category != "necessary":
-            return {}
+        result = {}
+        
+        for name, details in st.session_state.cookies.items():
+            # Check category
+            if details.get("category") != category:
+                continue
             
-        category_cookies = {}
-        now = datetime.now()
-        
-        for name, cookie in st.session_state.cookies.items():
-            # Check if cookie belongs to the requested category
-            if cookie.get('category', 'necessary') != category:
+            # Check if expired
+            if "expires" in details:
+                expiry = datetime.fromisoformat(details["expires"])
+                if expiry < datetime.utcnow():
+                    continue
+            
+            # Check consent
+            if not self._check_category_consent(category):
                 continue
-                
-            # Check expiration
-            expiry = datetime.fromisoformat(cookie['expires'])
-            if now >= expiry:
-                del st.session_state.cookies[name]
-                continue
-                
-            category_cookies[name] = cookie if include_details else cookie['value']
+            
+            # Add to result
+            if include_details:
+                result[name] = details
+            else:
+                result[name] = details.get("value")
         
-        return category_cookies
+        return result
 
     def clear_all_cookies(self, exclude_necessary: bool = True) -> None:
         """
@@ -261,16 +256,12 @@ class CookieManager:
         """
         if exclude_necessary:
             # Keep only necessary cookies
-            necessary_cookies = {}
-            for name, cookie in st.session_state.cookies.items():
-                if cookie.get('category', "") == "necessary":
-                    necessary_cookies[name] = cookie
-            st.session_state.cookies = necessary_cookies
-            logger.info("Cleared all non-necessary cookies")
+            for name, details in list(st.session_state.cookies.items()):
+                if details.get("category") != "necessary":
+                    del st.session_state.cookies[name]
         else:
             # Clear all cookies
             st.session_state.cookies = {}
-            logger.info("Cleared all cookies")
 
     def clear_category(self, category: str) -> None:
         """
@@ -279,18 +270,9 @@ class CookieManager:
         Args:
             category: Category of cookies to clear
         """
-        if category == "necessary":
-            logger.warning("Attempted to clear necessary cookies, operation denied")
-            return
-            
-        # Keep cookies not in the specified category
-        preserved_cookies = {}
-        for name, cookie in st.session_state.cookies.items():
-            if cookie.get('category', "") != category:
-                preserved_cookies[name] = cookie
-        
-        st.session_state.cookies = preserved_cookies
-        logger.info(f"Cleared all cookies in category '{category}'")
+        for name, details in list(st.session_state.cookies.items()):
+            if details.get("category") == category:
+                del st.session_state.cookies[name]
 
     def set_consent(self, status: str, preferences: Dict[str, bool] = None) -> Dict:
         """
@@ -303,34 +285,38 @@ class CookieManager:
         Returns:
             Dict with operation result
         """
-        if status not in ["granted", "denied"]:
-            return {
-                "success": False,
-                "reason": "Invalid consent status. Must be 'granted' or 'denied'."
-            }
-            
-        # Update consent status
-        st.session_state.cookie_consent["status"] = status
-        st.session_state.cookie_consent["timestamp"] = datetime.now().isoformat()
+        # Validate status
+        if status not in ["granted", "denied", "unknown"]:
+            return {"error": "Invalid consent status. Use 'granted', 'denied', or 'unknown'."}
         
-        # Update preferences if provided
-        if preferences:
-            for category, enabled in preferences.items():
-                if category in st.session_state.cookie_preferences:
-                    # Don't allow disabling necessary cookies
-                    if category == "necessary":
-                        continue
-                    st.session_state.cookie_preferences[category] = enabled
+        # If preferences not provided, use current
+        if preferences is None:
+            preferences = st.session_state.cookie_consent.get("preferences", {})
         
-        # If consent is denied, clear non-necessary cookies
+        # Make sure necessary cookies are always enabled
+        preferences["necessary"] = True
+        
+        # Update consent
+        st.session_state.cookie_consent = {
+            "status": status,
+            "date": datetime.utcnow().isoformat(),
+            "preferences": preferences
+        }
+        
+        # If consent denied, clear non-necessary cookies
         if status == "denied":
             self.clear_all_cookies(exclude_necessary=True)
         
-        logger.info(f"Cookie consent set to '{status}' with preferences: {st.session_state.cookie_preferences}")
+        # If specific preferences provided, clear cookies for denied categories
+        elif status == "granted" and preferences:
+            for category, allowed in preferences.items():
+                if not allowed and category != "necessary":
+                    self.clear_category(category)
+        
         return {
             "success": True,
-            "consent": st.session_state.cookie_consent,
-            "preferences": st.session_state.cookie_preferences
+            "status": status,
+            "preferences": preferences
         }
 
     def get_consent_status(self) -> Dict:
@@ -342,7 +328,7 @@ class CookieManager:
         """
         return {
             "consent": st.session_state.cookie_consent,
-            "preferences": st.session_state.cookie_preferences
+            "preferences": st.session_state.cookie_consent.get("preferences", {})
         }
 
     def has_consent(self) -> bool:
@@ -352,7 +338,7 @@ class CookieManager:
         Returns:
             True if consent has been granted, False otherwise
         """
-        return st.session_state.cookie_consent["status"] == "granted"
+        return st.session_state.cookie_consent.get("status") == "granted"
 
     def get_categories(self) -> Dict:
         """
@@ -362,7 +348,7 @@ class CookieManager:
             Dict with category information
         """
         return COOKIE_CATEGORIES
-        
+
     def export_consent_record(self) -> Dict:
         """
         Generate a consent record for compliance purposes.
@@ -371,21 +357,12 @@ class CookieManager:
             Dict with consent record
         """
         return {
-            "consent_id": st.session_state.cookie_consent.get("id"),
-            "status": st.session_state.cookie_consent.get("status"),
-            "timestamp": st.session_state.cookie_consent.get("timestamp"),
-            "version": st.session_state.cookie_consent.get("version"),
-            "preferences": st.session_state.cookie_preferences,
-            "cookies": {
-                "necessary": len(self.get_cookies_by_category("necessary")),
-                "functional": len(self.get_cookies_by_category("functional")),
-                "analytics": len(self.get_cookies_by_category("analytics")),
-                "marketing": len(self.get_cookies_by_category("marketing")),
-                "third_party": len(self.get_cookies_by_category("third_party"))
-            },
-            "user_agent": "Streamlit"  # Would be actual user agent in a real web app
+            "consent": st.session_state.cookie_consent,
+            "timestamp": datetime.utcnow().isoformat(),
+            "user_agent": "Streamlit App",  # Would need to be retrieved from request in a production app
+            "cookies": self.get_all_cookies(include_details=True)
         }
-        
+
     def _check_category_consent(self, category: str) -> bool:
         """
         Check if consent has been given for a specific cookie category.
@@ -396,13 +373,17 @@ class CookieManager:
         Returns:
             True if consent given or category is necessary, False otherwise
         """
-        # Necessary cookies are always allowed
+        # Necessary cookies always have consent
         if category == "necessary":
             return True
-            
-        # Check if user has given general consent
-        if st.session_state.cookie_consent["status"] != "granted":
-            return False
-            
-        # Check specific category preference
-        return st.session_state.cookie_preferences.get(category, False)
+        
+        # Get consent status
+        consent_status = st.session_state.cookie_consent.get("status")
+        preferences = st.session_state.cookie_consent.get("preferences", {})
+        
+        # If consent granted, check specific preference
+        if consent_status == "granted":
+            return preferences.get(category, False)
+        
+        # If consent denied or unknown, only necessary cookies allowed
+        return False

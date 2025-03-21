@@ -362,7 +362,7 @@ elif menu == "Email Lists":
         
         # Refresh button
         if st.button("Refresh Lists"):
-            st.experimental_rerun()
+            st.rerun()
         
         # Get all lists
         lists = list_manager.get_lists()

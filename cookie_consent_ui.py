@@ -181,13 +181,13 @@ class CookieConsentUI:
                 if st.button("Clear All Non-Essential Cookies"):
                     self.cookie_manager.clear_all_cookies(exclude_necessary=True)
                     st.success("All non-essential cookies have been cleared.")
-                    st.experimental_rerun()
+                    st.rerun()
             
             with col2:
                 if st.button("Clear All Cookies"):
                     self.cookie_manager.clear_all_cookies(exclude_necessary=False)
                     st.success("All cookies have been cleared.")
-                    st.experimental_rerun()
+                    st.rerun()
         
         with tabs[2]:
             st.subheader("Privacy Information")
@@ -270,7 +270,7 @@ class CookieConsentUI:
                 
                 if st.button("Close Settings"):
                     st.session_state.show_cookie_settings = False
-                    st.experimental_rerun()
+                    st.rerun()
 
     def add_cookie_footer(self) -> None:
         """Add a small cookie settings button to the page footer."""
