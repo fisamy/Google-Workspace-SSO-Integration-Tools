@@ -15,13 +15,41 @@ from visualizations import (
     plot_response_times
 )
 
-# Page configuration
+# Page configuration and styling
 st.set_page_config(
     page_title="Gmail Analytics Dashboard",
     page_icon="📧",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Custom CSS
+st.markdown("""
+    <style>
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    .st-emotion-cache-16idsys {
+        padding-top: 2rem;
+    }
+    .stButton > button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+        background-color: #4A90E2;
+        color: white;
+    }
+    .stTextInput > div > div > input {
+        border-radius: 5px;
+    }
+    .stMetric {
+        background-color: #F0F2F6;
+        padding: 15px;
+        border-radius: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # Initialize session state variables
 if "authenticated" not in st.session_state:
@@ -213,15 +241,20 @@ def main():
                 st.header("Email Metrics")
                 metrics = get_email_metrics(filtered_df)
                 
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Emails", metrics["total_emails"])
-                with col2:
-                    st.metric("Sent Emails", metrics["sent_emails"])
-                with col3:
-                    st.metric("Received Emails", metrics["received_emails"])
-                with col4:
-                    st.metric("Average Daily Volume", f"{metrics['avg_daily_volume']:.1f}")
+                st.markdown("### 📊 Key Metrics")
+                metrics_container = st.container()
+                with metrics_container:
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("📬 Total Emails", metrics["total_emails"], 
+                                delta=f"{metrics['total_emails']-metrics['total_emails_prev']}")
+                    with col2:
+                        st.metric("📤 Sent Emails", metrics["sent_emails"])
+                    with col3:
+                        st.metric("📥 Received Emails", metrics["received_emails"])
+                    with col4:
+                        st.metric("📈 Daily Average", f"{metrics['avg_daily_volume']:.1f}")
+                st.markdown("---")
                 
                 # Visualizations
                 st.header("Email Trends")
