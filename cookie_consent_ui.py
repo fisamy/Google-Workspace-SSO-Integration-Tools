@@ -5,9 +5,9 @@ This module provides a user interface for cookie consent management
 that can be integrated into Streamlit applications.
 """
 import streamlit as st
-from cookie_manager import CookieManager, COOKIE_CATEGORIES
 import json
 from typing import Dict, Optional, Any
+from cookie_manager import CookieManager
 
 class CookieConsentUI:
     def __init__(self, cookie_manager: CookieManager):
@@ -18,8 +18,11 @@ class CookieConsentUI:
             cookie_manager: An instance of the CookieManager class
         """
         self.cookie_manager = cookie_manager
-        self.categories = COOKIE_CATEGORIES
-
+        
+        # Initialize session state for UI
+        if "show_cookie_settings" not in st.session_state:
+            st.session_state.show_cookie_settings = False
+            
     def display_cookie_banner(self, key_prefix: str = "banner") -> Optional[Dict[str, Any]]:
         """
         Display a cookie consent banner if consent has not been given.
@@ -35,49 +38,44 @@ class CookieConsentUI:
         # If consent already given, don't show banner
         if consent_status["consent"]["status"] == "granted":
             return None
-        
-        # Display banner
-        with st.container():
-            st.markdown("""
-            <div style="padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
-                <h3 style="margin-top: 0;">Cookie Consent</h3>
-                <p>This website uses cookies to enhance your experience. By continuing to browse, you agree to our use of cookies.</p>
-            </div>
-            """, unsafe_allow_html=True)
             
-            col1, col2, col3 = st.columns([1, 1, 1])
+        # Container for banner at the bottom of the page
+        with st.container():
+            # Use columns for layout
+            col1, col2 = st.columns([3, 1])
             
             with col1:
-                if st.button("Accept All", key=f"{key_prefix}_accept_all"):
-                    # Accept all cookies
-                    preferences = {category: True for category in self.categories.keys()}
-                    result = self.cookie_manager.set_consent("granted", preferences)
-                    st.success("Thank you! Your preferences have been saved.")
-                    return result
-            
+                st.markdown("### We use cookies")
+                st.write("""
+                This website uses cookies to improve your experience, analyze our traffic, 
+                and provide social media features. By using our website, you accept our use of cookies.
+                Click 'Accept All' to consent to all cookies, or click 'Cookie Settings' to manage your preferences.
+                """)
+                
             with col2:
-                if st.button("Reject All", key=f"{key_prefix}_reject_all"):
-                    # Reject all except necessary
-                    preferences = {category: False for category in self.categories.keys()}
-                    preferences["necessary"] = True  # Necessary cookies always enabled
-                    result = self.cookie_manager.set_consent("denied", preferences)
-                    st.success("Your preferences have been saved. Only necessary cookies will be used.")
+                # Accept all button
+                if st.button("Accept All", key=f"{key_prefix}_accept_all"):
+                    # Enable all cookie categories
+                    preferences = {category: True for category in self.cookie_manager.get_categories().keys()}
+                    result = self.cookie_manager.set_consent("granted", preferences)
                     return result
-            
-            with col3:
-                if st.button("Preferences", key=f"{key_prefix}_preferences"):
-                    # Show expanded preferences in session state
-                    if "show_cookie_preferences" not in st.session_state:
-                        st.session_state.show_cookie_preferences = True
-                    else:
-                        st.session_state.show_cookie_preferences = True
-        
-        # Show detailed preferences if requested
-        if st.session_state.get("show_cookie_preferences", False):
-            return self.display_preferences_form(key_prefix)
-        
+                
+                # Settings button
+                if st.button("Cookie Settings", key=f"{key_prefix}_settings"):
+                    st.session_state.show_cookie_settings = True
+                    # Return None as no consent was given yet
+                    return None
+                    
+                # Reject all button
+                if st.button("Reject All", key=f"{key_prefix}_reject_all"):
+                    # Only allow necessary cookies
+                    preferences = {category: False for category in self.cookie_manager.get_categories().keys()}
+                    preferences["necessary"] = True  # necessary cookies are always enabled
+                    result = self.cookie_manager.set_consent("denied", preferences)
+                    return result
+                    
         return None
-
+        
     def display_preferences_form(self, key_prefix: str = "prefs") -> Optional[Dict[str, Any]]:
         """
         Display a detailed cookie preferences form.
@@ -88,156 +86,113 @@ class CookieConsentUI:
         Returns:
             Consent status or None if no action was taken
         """
-        with st.form(key=f"{key_prefix}_form"):
-            st.markdown("### Cookie Preferences")
-            st.markdown("Please select which types of cookies you would like to accept.")
-            
-            # Get current preferences
-            current_prefs = self.cookie_manager.get_consent_status()["preferences"]
-            
-            # Prepare new preferences dict
-            new_preferences = {}
-            
-            # Add toggle for each category
-            for category_id, category_info in self.categories.items():
-                # Necessary cookies can't be disabled
-                if category_id == "necessary":
-                    st.markdown(f"**{category_info['name']}**: {category_info['description']}")
-                    st.info("These cookies are required for the website to function and cannot be disabled.")
-                    new_preferences[category_id] = True
-                else:
-                    # Create a checkbox for this category
-                    value = st.checkbox(
-                        f"{category_info['name']}",
-                        value=current_prefs.get(category_id, False),
-                        help=category_info['description'],
-                        key=f"{key_prefix}_{category_id}"
-                    )
-                    new_preferences[category_id] = value
-            
-            # Submit button
-            submitted = st.form_submit_button("Save Preferences")
-            
-            if submitted:
-                # Save preferences
-                result = self.cookie_manager.set_consent("granted", new_preferences)
-                st.success("Your cookie preferences have been saved.")
-                
-                # Clear the show preferences flag
-                st.session_state.show_cookie_preferences = False
-                
-                return result
+        st.subheader("Cookie Preferences")
         
+        # Get current consent status
+        consent_status = self.cookie_manager.get_consent_status()
+        categories = self.cookie_manager.get_categories()
+        
+        # Create form for cookie settings
+        preferences = {}
+        
+        # Initialize with current preferences
+        for category, details in categories.items():
+            is_necessary = category == "necessary"
+            current_value = consent_status["preferences"].get(category, False)
+            
+            # Display category information
+            st.write(f"**{details['name']}**")
+            st.write(details["description"])
+            
+            # Checkbox for category (disabled for necessary cookies)
+            if is_necessary:
+                st.checkbox(
+                    "Enabled", 
+                    value=True, 
+                    disabled=True,
+                    key=f"{key_prefix}_{category}"
+                )
+                preferences[category] = True
+            else:
+                preferences[category] = st.checkbox(
+                    "Enable", 
+                    value=current_value,
+                    key=f"{key_prefix}_{category}"
+                )
+            
+            st.write("---")
+        
+        # Save preferences button
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("Save Preferences", key=f"{key_prefix}_save"):
+                result = self.cookie_manager.set_consent("granted", preferences)
+                st.session_state.show_cookie_settings = False
+                return result
+                
+        with col2:
+            if st.button("Cancel", key=f"{key_prefix}_cancel"):
+                st.session_state.show_cookie_settings = False
+                return None
+                
         return None
-
+        
     def display_management_page(self) -> None:
         """Display a full cookie management page."""
-        st.title("Cookie Settings")
-        
-        # Current status summary
+        # Current consent status
         consent_status = self.cookie_manager.get_consent_status()
         
-        if consent_status["consent"]["status"] == "granted":
-            st.success("You have given consent to cookies on this site.")
-        elif consent_status["consent"]["status"] == "denied":
-            st.warning("You have declined non-essential cookies on this site.")
+        st.subheader("Cookie Consent Status")
+        status = consent_status["consent"]["status"]
+        
+        if status == "granted":
+            st.success("Consent: Granted")
+        elif status == "denied":
+            st.error("Consent: Denied")
         else:
-            st.info("You have not yet set your cookie preferences.")
-        
-        # Preference tabs
-        tabs = st.tabs(["Preferences", "Current Cookies", "Privacy Information"])
-        
-        with tabs[0]:
-            self.display_preferences_form("mgmt")
-        
-        with tabs[1]:
-            st.subheader("Currently Stored Cookies")
+            st.warning("Consent: Not yet provided")
             
-            # Get cookies with details
-            cookies_by_category = {}
-            for category in self.categories:
-                category_cookies = self.cookie_manager.get_cookies_by_category(category, include_details=True)
-                if category_cookies:
-                    cookies_by_category[category] = category_cookies
+        st.write(f"Last updated: {consent_status['consent']['date']}")
+        
+        # Display current preferences
+        st.subheader("Current Preferences")
+        
+        categories = self.cookie_manager.get_categories()
+        for category, details in categories.items():
+            enabled = consent_status["preferences"].get(category, False)
+            status_text = "Enabled" if enabled else "Disabled"
             
-            if not any(cookies_by_category.values()):
-                st.info("No cookies currently stored.")
+            if enabled:
+                st.success(f"{details['name']}: {status_text}")
             else:
-                for category_id, cookies in cookies_by_category.items():
-                    category_info = self.categories[category_id]
-                    with st.expander(f"{category_info['name']} ({len(cookies)})"):
-                        if not cookies:
-                            st.write("No cookies in this category.")
-                        else:
-                            for name, details in cookies.items():
-                                st.write(f"**{name}**")
-                                st.json(details)
-            
-            # Clear buttons
-            st.subheader("Clear Cookies")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("Clear All Non-Essential Cookies"):
-                    self.cookie_manager.clear_all_cookies(exclude_necessary=True)
-                    st.success("All non-essential cookies have been cleared.")
-                    st.rerun()
-            
-            with col2:
-                if st.button("Clear All Cookies"):
-                    self.cookie_manager.clear_all_cookies(exclude_necessary=False)
-                    st.success("All cookies have been cleared.")
-                    st.rerun()
+                st.error(f"{details['name']}: {status_text}")
+                
+        # List of active cookies
+        st.subheader("Active Cookies")
+        cookies = self.cookie_manager.get_all_cookies(include_details=True)
         
-        with tabs[2]:
-            st.subheader("Privacy Information")
-            st.markdown("""
-            ### Cookie Policy
+        if not cookies:
+            st.info("No active cookies")
+        else:
+            for name, details in cookies.items():
+                st.write(f"**{name}**")
+                st.write(f"- Category: {details.get('category', 'unknown')}")
+                st.write(f"- Created: {details.get('created', 'unknown')}")
+                st.write(f"- Expires: {details.get('expires', 'unknown')}")
+                if "description" in details:
+                    st.write(f"- Purpose: {details['description']}")
+                st.write("---")
+                
+        # Update preferences button
+        if st.button("Update Cookie Preferences"):
+            st.session_state.show_cookie_settings = True
             
-            This website uses cookies to improve your experience while you navigate through the website. 
-            Cookies categorized as necessary are stored on your browser as they are essential for the basic 
-            functionalities of the website to work properly.
+        # Display preference form if requested
+        if st.session_state.show_cookie_settings:
+            st.markdown("---")
+            self.display_preferences_form(key_prefix="management")
             
-            We also use third-party cookies that help us analyze and understand how you use this website, 
-            to store user preferences, and to provide content and advertisements. These cookies will be 
-            stored in your browser only with your consent.
-            
-            ### Cookie Categories
-            
-            - **Necessary**: Essential for the website to function properly. These cannot be disabled.
-            - **Functional**: Enable enhanced functionality and personalization.
-            - **Analytics**: Help us understand how visitors interact with the website.
-            - **Marketing**: Used to track visitors across websites for advertising purposes.
-            - **Third Party**: Set by third-party services or content embedded on our pages.
-            
-            ### Your Rights
-            
-            You have the right to accept or decline cookies (except necessary cookies). You can 
-            exercise your preferences by clicking on the preference settings on this page.
-            
-            ### Data Retention
-            
-            Cookies expire after their designated lifespan, which may vary from session-only 
-            to persistent cookies that remain valid for a set period.
-            
-            ### Changes to This Policy
-            
-            We may update our cookie policy from time to time. Any changes will be posted on this page.
-            """)
-            
-            # Export consent record
-            st.subheader("Your Consent Record")
-            record = self.cookie_manager.export_consent_record()
-            st.json(record)
-            
-            consent_json = json.dumps(record, indent=2)
-            st.download_button(
-                "Download Consent Record",
-                consent_json,
-                "consent_record.json",
-                "application/json"
-            )
-
     def display_cookie_settings_button(self, label: str = "Cookie Settings", location: str = "sidebar") -> bool:
         """
         Display a button to open cookie settings.
@@ -255,37 +210,32 @@ class CookieConsentUI:
             clicked = st.button(label)
             
         if clicked:
-            # Set flag to show settings
             st.session_state.show_cookie_settings = True
-            return True
             
-        return False
-
+        return clicked
+            
     def handle_cookie_settings(self) -> None:
         """Handle displaying and hiding cookie settings."""
-        # If settings flag is set, show the management page
-        if st.session_state.get("show_cookie_settings", False):
-            with st.container():
-                self.display_management_page()
-                
-                if st.button("Close Settings"):
-                    st.session_state.show_cookie_settings = False
+        if st.session_state.show_cookie_settings:
+            with st.expander("Cookie Settings", expanded=True):
+                if self.display_preferences_form(key_prefix="popup"):
+                    st.success("Cookie preferences updated!")
                     st.rerun()
-
+                    
     def add_cookie_footer(self) -> None:
         """Add a small cookie settings button to the page footer."""
-        st.markdown("""
-        <div style="position: fixed; bottom: 10px; right: 10px; background-color: #f8f9fa; 
-        padding: 5px 10px; border-radius: 5px; border: 1px solid #dee2e6; z-index: 1000;">
-            <a href="#" id="cookie-settings-btn" style="text-decoration: none; color: #495057;">
-                🍪 Cookie Settings
-            </a>
-        </div>
-        <script>
-            document.getElementById('cookie-settings-btn').addEventListener('click', function(e) {
-                e.preventDefault();
-                // This would need integration with Streamlit's event system
-                // For now, we're using the sidebar button instead
-            });
-        </script>
-        """, unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown(
+            """
+            <div style="text-align: center; font-size: 0.8em;">
+                <a href="#" onclick="javascript:document.dispatchEvent(new CustomEvent('cookie_settings')); return false;">
+                    Cookie Settings
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Handle the event
+        if st.button("Cookie Settings", key="footer_cookie_settings"):
+            st.session_state.show_cookie_settings = True
