@@ -7,6 +7,29 @@ from wordcloud import WordCloud
 import numpy as np
 from data_processor import extract_common_words, analyze_response_times
 
+def plot_importance_distribution(df):
+    """Plot distribution of email importance."""
+    if df.empty or 'importance' not in df.columns:
+        return go.Figure()
+    
+    importance_counts = df['importance'].value_counts()
+    
+    fig = go.Figure(data=[
+        go.Bar(
+            x=importance_counts.index,
+            y=importance_counts.values,
+            marker_color=['red' if x == 'high' else 'blue' for x in importance_counts.index]
+        )
+    ])
+    
+    fig.update_layout(
+        title='Email Importance Distribution',
+        xaxis_title='Importance Level',
+        yaxis_title='Count'
+    )
+    
+    return fig
+
 def plot_email_volume_over_time(df):
     """Plot email volume over time."""
     if df.empty or 'date' not in df.columns:
