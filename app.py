@@ -663,7 +663,17 @@ else:  # Help
     """)
 
 # Initialize database on startup
+@st.cache_data
+def serve_static_files():
+    # Create static directory if it doesn't exist
+    if not os.path.exists("static"):
+        os.makedirs("static")
+    return True
+
 if __name__ == "__main__":
+    # Initialize static file serving
+    serve_static_files()
+    
     # Check for environment folder
     if not os.path.exists(".streamlit"):
         os.makedirs(".streamlit")
