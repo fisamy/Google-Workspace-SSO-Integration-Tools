@@ -874,6 +874,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "plotly" },
+    { name = "requests" },
     { name = "streamlit" },
     { name = "wordcloud" },
 ]
@@ -887,6 +888,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2.4" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "plotly", specifier = ">=6.0.1" },
+    { name = "requests", specifier = ">=2.32.3" },
     { name = "streamlit", specifier = ">=1.43.2" },
     { name = "wordcloud", specifier = ">=1.9.4" },
 ]
