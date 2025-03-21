@@ -81,11 +81,11 @@ if not st.session_state.authenticated:
 
 def main():
     st.title("Gmail Analytics Dashboard")
-    
+
     # Initialize account manager
     if 'account_manager' not in st.session_state:
         st.session_state.account_manager = GmailAccountManager()
-    
+
     # Account management section
     with st.sidebar:
         st.header("Account Management")
@@ -95,7 +95,7 @@ def main():
                 if st.session_state.account_manager.add_account(new_email):
                     st.success(f"Successfully added {new_email}")
                     st.rerun()
-        
+
         st.header("Account Status")
         for email in st.session_state.account_manager.list_accounts():
             status = st.session_state.account_manager.get_account_status(email)
@@ -109,11 +109,11 @@ def main():
                         st.success("Account verified successfully")
                     else:
                         st.error("Account verification failed")
-    
+
     # Sidebar for authentication and filtering
     with st.sidebar:
         st.header("Authentication")
-        
+
         if st.session_state.authenticated:
             st.success("✅ Authenticated with Gmail")
             if st.button("Logout"):
@@ -126,7 +126,7 @@ def main():
             st.info("Please authenticate with Gmail to analyze your email data")
             client_id = st.text_input("Client ID", type="password", help="Enter your Google OAuth Client ID")
             client_secret = st.text_input("Client Secret", type="password", help="Enter your Google OAuth Client Secret")
-            
+
             if st.button("Authenticate with Gmail"):
                 if not client_id or not client_secret:
                     st.error("Please enter both Client ID and Client Secret")
@@ -148,17 +148,19 @@ def main():
                             st.rerun()
                         except Exception as e:
                             st.error(f"Authentication failed: {str(e)}")
-        
+
         if st.session_state.authenticated:
-            st.header("Data Fetching")
+            st.header("Data Fetching ℹ️")
+            st.info("📌 Fetch your email data to analyze patterns and trends")
             st.session_state.fetch_count = st.number_input(
-                "Number of emails to fetch", 
+                "Number of emails to fetch 🔄", 
                 min_value=100, 
                 max_value=1000, 
                 value=st.session_state.fetch_count,
-                step=100
+                step=100,
+                help="Choose how many recent emails to analyze. More emails provide better insights but take longer to process."
             )
-            
+
             if st.button("Fetch Emails"):
                 with st.spinner("Fetching email data..."):
                     try:
@@ -174,34 +176,34 @@ def main():
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error fetching emails: {str(e)}")
-            
+
             if st.session_state.emails_df is not None:
                 st.header("Data Filters")
-                
+
                 # Date range filter
                 min_date = st.session_state.emails_df['date'].min().date()
                 max_date = st.session_state.emails_df['date'].max().date()
-                
+
                 date_range = st.date_input(
                     "Filter by date range",
                     value=(min_date, max_date),
                     min_value=min_date,
                     max_value=max_date
                 )
-                
+
                 if len(date_range) == 2:
                     start_date, end_date = date_range
                     # Convert to datetime for comparison
                     start_datetime = datetime.datetime.combine(start_date, datetime.time.min)
                     end_datetime = datetime.datetime.combine(end_date, datetime.time.max)
-                    
+
                     filtered_df = st.session_state.emails_df[
                         (st.session_state.emails_df['date'] >= start_datetime) &
                         (st.session_state.emails_df['date'] <= end_datetime)
                     ]
                 else:
                     filtered_df = st.session_state.emails_df
-                
+
                 # Sender filter - show top 20 most frequent senders
                 if not filtered_df.empty:
                     top_senders = filtered_df['from'].value_counts().head(20).index.tolist()
@@ -210,10 +212,10 @@ def main():
                         options=top_senders,
                         default=[]
                     )
-                    
+
                     if selected_senders:
                         filtered_df = filtered_df[filtered_df['from'].isin(selected_senders)]
-                
+
                 # Category filter
                 if not filtered_df.empty:
                     categorized_df = categorize_emails(filtered_df)
@@ -223,12 +225,12 @@ def main():
                         options=categories,
                         default=categories
                     )
-                    
+
                     if selected_categories:
                         categorized_df = categorized_df[categorized_df['category'].isin(selected_categories)]
-                    
+
                     filtered_df = categorized_df
-    
+
     # Main content area - only show if authenticated
     if st.session_state.authenticated:
         if st.session_state.emails_df is None:
@@ -240,7 +242,7 @@ def main():
                 # Email metrics
                 st.header("Email Metrics")
                 metrics = get_email_metrics(filtered_df)
-                
+
                 st.markdown("### 📊 Key Metrics")
                 metrics_container = st.container()
                 with metrics_container:
@@ -257,42 +259,42 @@ def main():
                         response_rate = (metrics["sent_emails"] / metrics["received_emails"] * 100) if metrics["received_emails"] > 0 else 0
                         st.metric("📫 Response Rate", f"{response_rate:.1f}%")
                 st.markdown("---")
-                
+
                 # Visualizations
                 st.header("Email Trends")
-                
+
                 # Email volume over time
                 st.subheader("Email Volume Over Time")
                 volume_chart = plot_email_volume_over_time(filtered_df)
                 st.plotly_chart(volume_chart, use_container_width=True)
-                
+
                 # Senders and categories
                 col1, col2 = st.columns(2)
                 with col1:
                     st.subheader("Top Email Senders")
                     sender_chart = plot_sender_distribution(filtered_df)
                     st.plotly_chart(sender_chart, use_container_width=True)
-                
+
                 with col2:
                     st.subheader("Email Categories")
                     category_chart = plot_email_categories(filtered_df)
                     st.plotly_chart(category_chart, use_container_width=True)
-                
+
                 # Hour of day distribution
                 st.subheader("Email Activity by Hour")
                 hourly_chart = plot_hourly_distribution(filtered_df)
                 st.plotly_chart(hourly_chart, use_container_width=True)
-                
+
                 # Word cloud of email subjects
                 st.subheader("Common Words in Email Subjects")
                 word_cloud = plot_word_cloud(filtered_df)
                 st.pyplot(word_cloud)
-                
+
                 # Response times analysis
                 st.subheader("Response Time Analysis")
                 response_chart = plot_response_times(filtered_df)
                 st.plotly_chart(response_chart, use_container_width=True)
-                
+
                 # Raw data table (expandable)
                 with st.expander("View Raw Email Data"):
                     st.dataframe(filtered_df)
