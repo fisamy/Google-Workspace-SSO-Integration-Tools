@@ -2,9 +2,10 @@
 Database models and connection module for email verification system.
 """
 import os
-import json
+import logging
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, Float, ForeignKey, DateTime, Text
+
+import sqlalchemy
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -13,23 +14,29 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Database connection
-DATABASE_URL = os.getenv('DATABASE_URL')
-engine = create_engine(DATABASE_URL)
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Database URL from environment
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Create engine and base
+engine = sqlalchemy.create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Define models
+# Models
 class EmailVerificationService(Base):
     __tablename__ = "email_verification_services"
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(50), unique=True, nullable=False)
-    api_key = Column(String(255))
-    base_url = Column(String(255))
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, index=True)
+    name = sqlalchemy.Column(sqlalchemy.String(50), unique=True, nullable=False)
+    api_key = sqlalchemy.Column(sqlalchemy.String(255))
+    base_url = sqlalchemy.Column(sqlalchemy.String(255))
+    is_active = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, default=datetime.utcnow)
+    updated_at = sqlalchemy.Column(sqlalchemy.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def __repr__(self):
         return f"<EmailVerificationService(name='{self.name}', is_active={self.is_active})>"
@@ -37,36 +44,36 @@ class EmailVerificationService(Base):
 class EmailVerification(Base):
     __tablename__ = "email_verification"
     
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), nullable=False, index=True)
-    is_valid = Column(Boolean)
-    score = Column(Float)
-    provider = Column(String(50), nullable=False)
-    verification_date = Column(DateTime, default=datetime.utcnow)
-    details = Column(JSONB)
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, index=True)
+    email = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    is_valid = sqlalchemy.Column(sqlalchemy.Boolean)
+    score = sqlalchemy.Column(sqlalchemy.Float)
+    provider = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)
+    verification_date = sqlalchemy.Column(sqlalchemy.DateTime, default=datetime.utcnow)
+    details = sqlalchemy.Column(JSONB)
     
     def __repr__(self):
         return f"<EmailVerification(email='{self.email}', is_valid={self.is_valid}, provider='{self.provider}')>"
     
     def to_dict(self):
         return {
-            "id": self.id,
-            "email": self.email,
-            "is_valid": self.is_valid,
-            "score": self.score,
-            "provider": self.provider,
-            "verification_date": self.verification_date.isoformat() if self.verification_date else None,
-            "details": self.details
+            'id': self.id,
+            'email': self.email,
+            'is_valid': self.is_valid,
+            'score': self.score,
+            'provider': self.provider,
+            'verification_date': self.verification_date.isoformat() if self.verification_date else None,
+            'details': self.details
         }
 
 class EmailList(Base):
     __tablename__ = "email_lists"
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)
-    description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, index=True)
+    name = sqlalchemy.Column(sqlalchemy.String(100), nullable=False)
+    description = sqlalchemy.Column(sqlalchemy.Text)
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, default=datetime.utcnow)
+    updated_at = sqlalchemy.Column(sqlalchemy.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     entries = relationship("EmailListEntry", back_populates="email_list", cascade="all, delete-orphan")
     
@@ -76,21 +83,21 @@ class EmailList(Base):
 class EmailListEntry(Base):
     __tablename__ = "email_list_entries"
     
-    id = Column(Integer, primary_key=True, index=True)
-    list_id = Column(Integer, ForeignKey("email_lists.id", ondelete="CASCADE"))
-    email = Column(String(255), nullable=False, index=True)
-    first_name = Column(String(100))
-    last_name = Column(String(100))
-    company = Column(String(100))
-    position = Column(String(100))
-    added_at = Column(DateTime, default=datetime.utcnow)
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, index=True)
+    list_id = sqlalchemy.Column(sqlalchemy.Integer, sqlalchemy.ForeignKey("email_lists.id", ondelete="CASCADE"))
+    email = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    first_name = sqlalchemy.Column(sqlalchemy.String(100))
+    last_name = sqlalchemy.Column(sqlalchemy.String(100))
+    company = sqlalchemy.Column(sqlalchemy.String(100))
+    position = sqlalchemy.Column(sqlalchemy.String(100))
+    added_at = sqlalchemy.Column(sqlalchemy.DateTime, default=datetime.utcnow)
     
     email_list = relationship("EmailList", back_populates="entries")
     
     def __repr__(self):
-        return f"<EmailListEntry(email='{self.email}', list_id={self.list_id})>"
+        return f"<EmailListEntry(email='{self.email}')>"
 
-# Helper functions
+# Database functions
 def get_db():
     """Get database session."""
     db = SessionLocal()
@@ -101,50 +108,61 @@ def get_db():
 
 def init_db():
     """Initialize the database."""
-    Base.metadata.create_all(bind=engine)
+    try:
+        # Create all tables
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully.")
+    except Exception as e:
+        logger.error(f"Error creating database tables: {str(e)}")
 
 def add_default_services():
     """Add default verification services to the database."""
-    db = SessionLocal()
-    
-    # Check if services already exist
-    existing_services = db.query(EmailVerificationService).all()
-    if existing_services:
+    try:
+        # Check if services already exist
+        db = next(get_db())
+        existing_services = db.query(EmailVerificationService).all()
+        
+        if existing_services:
+            logger.info("Default services already exist.")
+            db.close()
+            return
+        
+        # Default services configuration
+        default_services = [
+            {
+                "name": "zerobounce",
+                "base_url": "https://api.zerobounce.net/v2",
+                "is_active": True
+            },
+            {
+                "name": "mailboxlayer",
+                "base_url": "https://api.mailboxlayer.com",
+                "is_active": True
+            },
+            {
+                "name": "neutrinoapi",
+                "base_url": "https://neutrinoapi.net/email-validate",
+                "is_active": True
+            },
+            {
+                "name": "spokeo",
+                "base_url": "https://api.spokeo.com",
+                "is_active": True
+            },
+            {
+                "name": "hunter",
+                "base_url": "https://api.hunter.io/v2",
+                "is_active": True
+            }
+        ]
+        
+        # Add default services
+        for service_data in default_services:
+            service = EmailVerificationService(**service_data)
+            db.add(service)
+        
+        db.commit()
+        logger.info("Default services added to database.")
         db.close()
-        return
-    
-    # Define default services
-    default_services = [
-        {
-            "name": "zerobounce",
-            "base_url": "https://api.zerobounce.net/v2"
-        },
-        {
-            "name": "mailboxlayer",
-            "base_url": "https://api.mailboxlayer.com"
-        },
-        {
-            "name": "neutrinoapi",
-            "base_url": "https://neutrinoapi.net/email-validate"
-        },
-        {
-            "name": "spokeo",
-            "base_url": "https://www.spokeo.com/api"
-        },
-        {
-            "name": "hunter",
-            "base_url": "https://api.hunter.io/v2"
-        }
-    ]
-    
-    # Add services
-    for service in default_services:
-        db_service = EmailVerificationService(**service)
-        db.add(db_service)
-    
-    db.commit()
-    db.close()
-
-if __name__ == "__main__":
-    init_db()
-    add_default_services()
+    except Exception as e:
+        logger.error(f"Error adding default services: {str(e)}")
