@@ -41,6 +41,12 @@ class CookieManager:
             st.session_state.cookies = {}
         if "gmail_sessions" not in st.session_state:
             st.session_state.gmail_sessions = {}
+        if "cookie_consent" not in st.session_state:
+            st.session_state.cookie_consent = {
+                "status": "unknown",
+                "date": datetime.utcnow().isoformat(),
+                "preferences": {"necessary": True}
+            }
 
     def store_gmail_cookies(self, email: str, session_data: dict) -> None:
         """Store Gmail session cookies securely."""
