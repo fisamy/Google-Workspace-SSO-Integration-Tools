@@ -30,6 +30,7 @@ add_default_services()
 # Initialize managers
 verification_manager = EmailVerificationManager()
 list_manager = EmailListManager()
+sso_manager = SSOManager()
 
 # Set page configuration
 st.set_page_config(
