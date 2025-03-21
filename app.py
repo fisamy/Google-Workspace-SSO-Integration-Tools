@@ -1,303 +1,606 @@
-import streamlit as st
-import pandas as pd
-import datetime
-import os
-from account_manager import GmailAccountManager
+"""
+Email Verification System Dashboard
 
-from gmail_api import authenticate_gmail, get_gmail_service, get_messages
-from data_processor import process_emails, categorize_emails, get_email_metrics
-from visualizations import (
-    plot_email_volume_over_time,
-    plot_email_categories,
-    plot_sender_distribution,
-    plot_hourly_distribution,
-    plot_word_cloud,
-    plot_response_times
+A Streamlit application for email verification and list management using multiple
+verification services.
+"""
+import os
+import json
+import datetime
+import pandas as pd
+import streamlit as st
+import logging
+from typing import Dict, List, Any, Optional
+import tempfile
+
+from database import init_db, add_default_services
+from email_verification_manager import EmailVerificationManager
+from email_list_manager import EmailListManager
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# Page configuration and styling
+# Initialize database
+init_db()
+add_default_services()
+
+# Initialize managers
+verification_manager = EmailVerificationManager()
+list_manager = EmailListManager()
+
+# Set page configuration
 st.set_page_config(
-    page_title="Gmail Analytics Dashboard",
-    page_icon="📧",
+    page_title="Email Verification System",
+    page_icon="✉️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
-st.markdown("""
-    <style>
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }
-    .st-emotion-cache-16idsys {
-        padding-top: 2rem;
-    }
-    .stButton > button {
-        width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        background-color: #4A90E2;
-        color: white;
-    }
-    .stTextInput > div > div > input {
-        border-radius: 5px;
-    }
-    .stMetric {
-        background-color: #F0F2F6;
-        padding: 15px;
-        border-radius: 10px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# Initialize session state variables
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-if "creds" not in st.session_state:
-    st.session_state.creds = None
-if "emails_df" not in st.session_state:
-    st.session_state.emails_df = None
-if "service" not in st.session_state:
-    st.session_state.service = None
-if "fetch_count" not in st.session_state:
-    st.session_state.fetch_count = 500
-
-# Initialize cookie manager
-from cookie_manager import CookieManager
-cookie_manager = CookieManager()
-
-# Restore authentication from cookie if available
-if not st.session_state.authenticated:
-    auth_cookie = cookie_manager.get_cookie('gmail_auth')
-    if auth_cookie:
-        try:
-            auth_data = json.loads(auth_cookie)
-            os.environ["GOOGLE_CLIENT_ID"] = auth_data['client_id']
-            os.environ["GOOGLE_CLIENT_SECRET"] = auth_data['client_secret']
-            st.session_state.authenticated = True
-        except:
-            cookie_manager.delete_cookie('gmail_auth')
-
-def main():
-    st.title("Gmail Analytics Dashboard")
-
-    # Initialize account manager
-    if 'account_manager' not in st.session_state:
-        st.session_state.account_manager = GmailAccountManager()
-
-    # Account management section
-    with st.sidebar:
-        st.header("Account Management")
-        new_email = st.text_input("Add Gmail Account")
-        if st.button("Add Account"):
-            if new_email:
-                if st.session_state.account_manager.add_account(new_email):
-                    st.success(f"Successfully added {new_email}")
-                    st.rerun()
-
-        st.header("Account Status")
-        for email in st.session_state.account_manager.list_accounts():
-            status = st.session_state.account_manager.get_account_status(email)
-            with st.expander(f"📧 {email}"):
-                st.write(f"Status: {status['status']}")
-                if status['status'] == 'Active':
-                    st.write(f"Total Messages: {status['messages_total']}")
-                    st.write(f"Total Threads: {status['threads_total']}")
-                if st.button(f"Verify {email}", key=f"verify_{email}"):
-                    if st.session_state.account_manager.verify_smtp(email):
-                        st.success("Account verified successfully")
-                    else:
-                        st.error("Account verification failed")
-
-    # Sidebar for authentication and filtering
-    with st.sidebar:
-        st.header("Authentication")
-
-        if st.session_state.authenticated:
-            st.success("✅ Authenticated with Gmail")
-            if st.button("Logout"):
-                st.session_state.authenticated = False
-                st.session_state.creds = None
-                st.session_state.emails_df = None
-                st.session_state.service = None
-                st.rerun()
+# Define session state initialization
+if 'api_keys_configured' not in st.session_state:
+    st.session_state.api_keys_configured = {}
+    
+    # Check which services have API keys configured
+    for service_name in verification_manager.services.keys():
+        service = verification_manager.services[service_name]
+        if hasattr(service, 'api_key') and service.api_key:
+            st.session_state.api_keys_configured[service_name] = True
         else:
-            st.info("Please authenticate with Gmail to analyze your email data")
-            client_id = st.text_input("Client ID", type="password", help="Enter your Google OAuth Client ID")
-            client_secret = st.text_input("Client Secret", type="password", help="Enter your Google OAuth Client Secret")
+            st.session_state.api_keys_configured[service_name] = False
 
-            if st.button("Authenticate with Gmail"):
-                if not client_id or not client_secret:
-                    st.error("Please enter both Client ID and Client Secret")
+# Functions
+def save_api_key(service_name, api_key):
+    """Save API key to environment and update session state."""
+    os.environ[f"{service_name.upper()}_API_KEY"] = api_key
+    
+    # Update the service instance with the new API key
+    verification_manager.services[service_name.lower()].api_key = api_key
+    st.session_state.api_keys_configured[service_name.lower()] = True
+    
+    st.success(f"{service_name} API key saved successfully!")
+
+def verify_single_email(email, service_name=None):
+    """Verify a single email address."""
+    with st.spinner(f"Verifying {email}..."):
+        result = verification_manager.verify_email(email, service_name)
+    return result
+
+def verify_bulk_emails(emails, service_name=None):
+    """Verify multiple email addresses."""
+    with st.spinner(f"Verifying {len(emails)} emails..."):
+        results = verification_manager.bulk_verify(emails, service_name)
+    return results
+
+def display_verification_result(result):
+    """Display the result of an email verification."""
+    if 'error' in result:
+        st.error(f"Error: {result['error']}")
+        return
+    
+    email = result.get('email', 'Unknown')
+    is_valid = result.get('is_valid')
+    score = result.get('score')
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.subheader("Email")
+        st.write(email)
+    
+    with col2:
+        st.subheader("Validity")
+        if is_valid is True:
+            st.success("Valid ✓")
+        elif is_valid is False:
+            st.error("Invalid ✗")
+        else:
+            st.warning("Unknown ?")
+    
+    with col3:
+        st.subheader("Score")
+        if score is not None:
+            st.progress(float(score))
+            st.write(f"{score:.2f}/1.00")
+        else:
+            st.write("N/A")
+    
+    # If we have detailed results from multiple services
+    if 'results' in result and isinstance(result['results'], dict):
+        st.subheader("Results by Service")
+        
+        for service_name, service_result in result['results'].items():
+            with st.expander(f"{service_name.capitalize()} Result"):
+                if 'error' in service_result:
+                    st.error(f"Error: {service_result['error']}")
                 else:
-                    with st.spinner("Authenticating..."):
-                        try:
-                            os.environ["GOOGLE_CLIENT_ID"] = client_id
-                            os.environ["GOOGLE_CLIENT_SECRET"] = client_secret
-                            st.session_state.creds = authenticate_gmail()
-                            st.session_state.service = get_gmail_service(st.session_state.creds)
-                            st.session_state.authenticated = True
-                            # Save authentication data in cookie
-                            auth_data = {
-                                'client_id': client_id,
-                                'client_secret': client_secret
-                            }
-                            cookie_manager.set_cookie('gmail_auth', json.dumps(auth_data))
-                            st.success("Authentication successful!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Authentication failed: {str(e)}")
+                    cols = st.columns(3)
+                    with cols[0]:
+                        st.write("**Validity:**")
+                        validity = service_result.get('is_valid')
+                        if validity is True:
+                            st.success("Valid ✓")
+                        elif validity is False:
+                            st.error("Invalid ✗")
+                        else:
+                            st.warning("Unknown ?")
+                    
+                    with cols[1]:
+                        st.write("**Score:**")
+                        srv_score = service_result.get('score')
+                        if srv_score is not None:
+                            st.progress(float(srv_score))
+                            st.write(f"{srv_score:.2f}/1.00")
+                        else:
+                            st.write("N/A")
+                    
+                    with cols[2]:
+                        st.write("**Details:**")
+                        if 'details' in service_result and service_result['details']:
+                            st.json(service_result['details'])
+                        else:
+                            st.write("No detailed data available")
+    
+    # If there's detailed data for a single service
+    elif 'details' in result and result['details']:
+        with st.expander("Detailed Information"):
+            st.json(result['details'])
 
-        if st.session_state.authenticated:
-            st.header("Data Fetching ℹ️")
-            st.info("📌 Fetch your email data to analyze patterns and trends")
-            st.session_state.fetch_count = st.number_input(
-                "Number of emails to fetch 🔄", 
-                min_value=100, 
-                max_value=1000, 
-                value=st.session_state.fetch_count,
-                step=100,
-                help="Choose how many recent emails to analyze. More emails provide better insights but take longer to process."
+# Sidebar menu
+st.sidebar.title("Email Verification System")
+menu = st.sidebar.selectbox(
+    "Navigation",
+    ["Single Email Verification", "Bulk Verification", "Email Lists", "API Keys", "Help"]
+)
+
+# Main content
+if menu == "Single Email Verification":
+    st.title("Single Email Verification")
+    st.write("Verify a single email address using one or multiple services.")
+    
+    # Check if any API keys are configured
+    available_services = verification_manager.get_available_services()
+    if not available_services:
+        st.warning("No verification services have API keys configured. Please set up API keys in the 'API Keys' section.")
+    
+    # Email input
+    email = st.text_input("Email Address", placeholder="example@domain.com")
+    
+    # Service selection
+    col1, col2 = st.columns(2)
+    with col1:
+        service_options = ["All Available Services"] + available_services
+        selected_service = st.selectbox("Select Verification Service", service_options)
+    
+    with col2:
+        st.write("Available Services:")
+        for service in available_services:
+            st.write(f"- {service.capitalize()}")
+    
+    # Verify button
+    if st.button("Verify Email"):
+        if not email:
+            st.error("Please enter an email address.")
+        else:
+            # Determine which service to use
+            service_name = None if selected_service == "All Available Services" else selected_service
+            
+            # Verify email
+            result = verify_single_email(email, service_name)
+            
+            # Display result
+            display_verification_result(result)
+    
+    # History
+    if email:
+        st.subheader("Verification History")
+        history = verification_manager.get_verification_history(email)
+        
+        if not history:
+            st.info("No verification history found for this email.")
+        else:
+            history_df = pd.DataFrame(history)
+            history_df['verification_date'] = pd.to_datetime(history_df['verification_date'])
+            history_df = history_df.sort_values('verification_date', ascending=False)
+            
+            # Display as table
+            st.dataframe(
+                history_df[['provider', 'is_valid', 'score', 'verification_date']],
+                use_container_width=True
             )
 
-            if st.button("Fetch Emails"):
-                with st.spinner("Fetching email data..."):
-                    try:
-                        messages = get_messages(
-                            st.session_state.service, 
-                            max_results=st.session_state.fetch_count
-                        )
-                        st.session_state.emails_df = process_emails(
-                            st.session_state.service, 
-                            messages
-                        )
-                        st.success(f"Successfully fetched {len(st.session_state.emails_df)} emails!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error fetching emails: {str(e)}")
-
-            if st.session_state.emails_df is not None:
-                st.header("Data Filters")
-
-                # Date range filter
-                min_date = st.session_state.emails_df['date'].min().date()
-                max_date = st.session_state.emails_df['date'].max().date()
-
-                date_range = st.date_input(
-                    "Filter by date range",
-                    value=(min_date, max_date),
-                    min_value=min_date,
-                    max_value=max_date
-                )
-
-                if len(date_range) == 2:
-                    start_date, end_date = date_range
-                    # Convert to datetime for comparison
-                    start_datetime = datetime.datetime.combine(start_date, datetime.time.min)
-                    end_datetime = datetime.datetime.combine(end_date, datetime.time.max)
-
-                    filtered_df = st.session_state.emails_df[
-                        (st.session_state.emails_df['date'] >= start_datetime) &
-                        (st.session_state.emails_df['date'] <= end_datetime)
-                    ]
+elif menu == "Bulk Verification":
+    st.title("Bulk Email Verification")
+    st.write("Verify multiple email addresses at once.")
+    
+    # Check if any API keys are configured
+    available_services = verification_manager.get_available_services()
+    if not available_services:
+        st.warning("No verification services have API keys configured. Please set up API keys in the 'API Keys' section.")
+        st.stop()
+    
+    # Input method: text or file
+    input_method = st.radio("Input Method", ["Enter Emails", "Upload CSV File"])
+    
+    emails_to_verify = []
+    
+    if input_method == "Enter Emails":
+        email_text = st.text_area(
+            "Enter email addresses (one per line)",
+            placeholder="example1@domain.com\nexample2@domain.com\nexample3@domain.com"
+        )
+        
+        if email_text:
+            # Split by newlines and filter empty lines
+            emails_to_verify = [e.strip() for e in email_text.split('\n') if e.strip()]
+            st.info(f"{len(emails_to_verify)} email(s) entered.")
+    
+    else:  # Upload CSV
+        uploaded_file = st.file_uploader("Upload CSV file with email addresses", type=["csv"])
+        
+        if uploaded_file:
+            # Save to temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_path = tmp_file.name
+            
+            try:
+                # Read CSV
+                df = pd.read_csv(tmp_path)
+                
+                # Look for email column
+                email_columns = [col for col in df.columns if 'email' in col.lower()]
+                
+                if email_columns:
+                    # Use the first column that contains 'email'
+                    email_col = email_columns[0]
+                    emails_to_verify = df[email_col].dropna().tolist()
+                    st.info(f"{len(emails_to_verify)} email(s) found in column '{email_col}'.")
                 else:
-                    filtered_df = st.session_state.emails_df
-
-                # Sender filter - show top 20 most frequent senders
-                if not filtered_df.empty:
-                    top_senders = filtered_df['from'].value_counts().head(20).index.tolist()
-                    selected_senders = st.multiselect(
-                        "Filter by sender",
-                        options=top_senders,
-                        default=[]
-                    )
-
-                    if selected_senders:
-                        filtered_df = filtered_df[filtered_df['from'].isin(selected_senders)]
-
-                # Category filter
-                if not filtered_df.empty:
-                    categorized_df = categorize_emails(filtered_df)
-                    categories = categorized_df['category'].unique().tolist()
-                    selected_categories = st.multiselect(
-                        "Filter by category",
-                        options=categories,
-                        default=categories
-                    )
-
-                    if selected_categories:
-                        categorized_df = categorized_df[categorized_df['category'].isin(selected_categories)]
-
-                    filtered_df = categorized_df
-
-    # Main content area - only show if authenticated
-    if st.session_state.authenticated:
-        if st.session_state.emails_df is None:
-            st.info("Please fetch your email data using the sidebar to view analytics.")
+                    st.error("No column containing 'email' found in the CSV file.")
+            except Exception as e:
+                st.error(f"Error reading CSV file: {str(e)}")
+            
+            # Clean up
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+    
+    # Service selection
+    service_options = ["All Available Services"] + available_services
+    selected_service = st.selectbox("Select Verification Service", service_options)
+    service_name = None if selected_service == "All Available Services" else selected_service
+    
+    # Verify button
+    if st.button("Verify Emails"):
+        if not emails_to_verify:
+            st.error("No emails to verify. Please enter emails or upload a CSV file.")
         else:
-            if filtered_df.empty:
-                st.warning("No emails match the selected filters. Please adjust your filter settings.")
+            # Limit the number of emails to verify at once
+            max_emails = 100
+            if len(emails_to_verify) > max_emails:
+                st.warning(f"Too many emails. Limiting to first {max_emails} emails.")
+                emails_to_verify = emails_to_verify[:max_emails]
+            
+            # Verify emails
+            results = verify_bulk_emails(emails_to_verify, service_name)
+            
+            if 'error' in results:
+                st.error(f"Error: {results['error']}")
+            elif 'results' in results:
+                # Convert results to DataFrame
+                if isinstance(results['results'], list):
+                    # Create a list of dictionaries for the DataFrame
+                    df_data = []
+                    
+                    for r in results['results']:
+                        if isinstance(r, dict) and 'email' in r:
+                            entry = {
+                                'email': r.get('email'),
+                                'is_valid': r.get('is_valid'),
+                                'score': r.get('score'),
+                                'provider': r.get('provider', '')
+                            }
+                            
+                            # If we have aggregated results
+                            if 'results' in r and isinstance(r['results'], dict):
+                                for srv, srv_result in r['results'].items():
+                                    if isinstance(srv_result, dict):
+                                        entry[f"{srv}_valid"] = srv_result.get('is_valid')
+                                        entry[f"{srv}_score"] = srv_result.get('score')
+                            
+                            df_data.append(entry)
+                    
+                    if df_data:
+                        result_df = pd.DataFrame(df_data)
+                        
+                        # Display results
+                        st.subheader("Verification Results")
+                        st.dataframe(result_df, use_container_width=True)
+                        
+                        # Download option
+                        csv = result_df.to_csv(index=False)
+                        st.download_button(
+                            "Download Results as CSV",
+                            csv,
+                            "email_verification_results.csv",
+                            "text/csv",
+                            key='download-csv'
+                        )
+                    else:
+                        st.error("No valid results returned.")
+                else:
+                    st.error("Unexpected result format.")
             else:
-                # Email metrics
-                st.header("Email Metrics")
-                metrics = get_email_metrics(filtered_df)
+                st.error("No results returned.")
 
-                st.markdown("### 📊 Key Metrics")
-                metrics_container = st.container()
-                with metrics_container:
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("📬 Total Emails", metrics["total_emails"], 
-                                delta=f"{metrics['total_emails']-metrics['total_emails_prev']}")
-                        st.metric("📈 Daily Average", f"{metrics['avg_daily_volume']:.1f}")
-                    with col2:
-                        st.metric("📤 Sent Emails", metrics["sent_emails"])
-                        st.metric("📨 Avg Message Length", f"{filtered_df['body'].str.len().mean():.0f} chars")
-                    with col3:
-                        st.metric("📥 Received Emails", metrics["received_emails"])
-                        response_rate = (metrics["sent_emails"] / metrics["received_emails"] * 100) if metrics["received_emails"] > 0 else 0
-                        st.metric("📫 Response Rate", f"{response_rate:.1f}%")
-                st.markdown("---")
+elif menu == "Email Lists":
+    st.title("Email Lists")
+    st.write("Manage your email lists for verification and outreach.")
+    
+    # Tabs for different list operations
+    tabs = st.tabs(["View Lists", "Create List", "Add to List", "Import/Export"])
+    
+    with tabs[0]:  # View Lists
+        st.subheader("Your Email Lists")
+        
+        # Refresh button
+        if st.button("Refresh Lists"):
+            st.experimental_rerun()
+        
+        # Get all lists
+        lists = list_manager.get_lists()
+        
+        if not lists:
+            st.info("No email lists found. Create a new list to get started.")
+        else:
+            # Display lists as expandable sections
+            for email_list in lists:
+                with st.expander(f"{email_list['name']} ({email_list['email_count']} emails)"):
+                    st.write(f"**Description:** {email_list['description'] or 'No description'}")
+                    st.write(f"**Created:** {email_list['created_at']}")
+                    st.write(f"**Updated:** {email_list['updated_at']}")
+                    
+                    # Button to view entries
+                    if st.button("View Entries", key=f"view_{email_list['list_id']}"):
+                        entries = list_manager.get_list_entries(email_list['list_id'])
+                        
+                        if not entries:
+                            st.info("No entries in this list.")
+                        else:
+                            st.dataframe(pd.DataFrame(entries), use_container_width=True)
+    
+    with tabs[1]:  # Create List
+        st.subheader("Create New List")
+        
+        list_name = st.text_input("List Name", placeholder="My Contact List")
+        list_description = st.text_area("Description", placeholder="Optional description for this list")
+        
+        if st.button("Create List"):
+            if not list_name:
+                st.error("Please enter a list name.")
+            else:
+                result = list_manager.create_list(list_name, list_description)
+                
+                if 'error' in result:
+                    st.error(f"Error: {result['error']}")
+                else:
+                    st.success(f"List '{list_name}' created successfully!")
+    
+    with tabs[2]:  # Add to List
+        st.subheader("Add Email to List")
+        
+        # Get lists for dropdown
+        lists = list_manager.get_lists()
+        list_options = {l['name']: l['list_id'] for l in lists}
+        
+        if not list_options:
+            st.info("No lists available. Please create a list first.")
+        else:
+            selected_list = st.selectbox("Select List", list(list_options.keys()))
+            list_id = list_options[selected_list]
+            
+            # Email input
+            email = st.text_input("Email Address", key="add_email", placeholder="example@domain.com")
+            
+            # Additional info
+            col1, col2 = st.columns(2)
+            with col1:
+                first_name = st.text_input("First Name", placeholder="Optional")
+                company = st.text_input("Company", placeholder="Optional")
+            
+            with col2:
+                last_name = st.text_input("Last Name", placeholder="Optional")
+                position = st.text_input("Position", placeholder="Optional")
+            
+            if st.button("Add to List"):
+                if not email:
+                    st.error("Please enter an email address.")
+                else:
+                    result = list_manager.add_email_to_list(
+                        list_id=list_id,
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        company=company,
+                        position=position
+                    )
+                    
+                    if 'error' in result:
+                        st.error(f"Error: {result['error']}")
+                    elif result.get('updated', False):
+                        st.success(f"Email {email} updated in list!")
+                    elif result.get('added', False):
+                        st.success(f"Email {email} added to list!")
+    
+    with tabs[3]:  # Import/Export
+        st.subheader("Import/Export Lists")
+        
+        # Get lists for dropdown
+        lists = list_manager.get_lists()
+        list_options = {l['name']: l['list_id'] for l in lists}
+        
+        if not list_options:
+            st.info("No lists available. Please create a list first.")
+        else:
+            selected_list = st.selectbox("Select List", list(list_options.keys()), key="imp_exp_list")
+            list_id = list_options[selected_list]
+            
+            # Tabs for import and export
+            imp_exp_tabs = st.tabs(["Import from CSV", "Export to CSV"])
+            
+            with imp_exp_tabs[0]:  # Import
+                st.write("Import emails from a CSV file into the selected list.")
+                st.write("The CSV should have columns for: email, first_name, last_name, company, position")
+                
+                uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+                
+                if uploaded_file:
+                    # Save to temp file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                        tmp_file.write(uploaded_file.getvalue())
+                        tmp_path = tmp_file.name
+                    
+                    # Preview the file
+                    try:
+                        df = pd.read_csv(tmp_path)
+                        st.write("Preview:")
+                        st.dataframe(df.head(), use_container_width=True)
+                        
+                        if st.button("Import Data"):
+                            result = list_manager.import_from_csv(list_id, tmp_path)
+                            
+                            if 'error' in result:
+                                st.error(f"Error: {result['error']}")
+                            else:
+                                st.success(f"Import successful! Added: {result.get('added', 0)}, Updated: {result.get('updated', 0)}, Errors: {result.get('errors', 0)}")
+                    
+                    except Exception as e:
+                        st.error(f"Error reading CSV file: {str(e)}")
+                    
+                    # Clean up
+                    try:
+                        os.unlink(tmp_path)
+                    except:
+                        pass
+            
+            with imp_exp_tabs[1]:  # Export
+                st.write("Export the selected list to a CSV file.")
+                
+                if st.button("Generate Export"):
+                    entries = list_manager.get_list_entries(list_id)
+                    
+                    if not entries:
+                        st.info("No entries to export in this list.")
+                    else:
+                        df = pd.DataFrame(entries)
+                        csv = df.to_csv(index=False)
+                        
+                        st.download_button(
+                            "Download CSV",
+                            csv,
+                            f"{selected_list.replace(' ', '_')}_export.csv",
+                            "text/csv",
+                            key="download-list-csv"
+                        )
 
-                # Visualizations
-                st.header("Email Trends")
+elif menu == "API Keys":
+    st.title("API Keys Configuration")
+    st.write("Configure API keys for the verification services.")
+    
+    # Status of API keys
+    st.subheader("API Key Status")
+    
+    for service_name in verification_manager.services.keys():
+        service_name_lower = service_name.lower()
+        col1, col2 = st.columns([1, 3])
+        
+        with col1:
+            if st.session_state.api_keys_configured.get(service_name_lower, False):
+                st.success(f"{service_name.capitalize()} ✓")
+            else:
+                st.error(f"{service_name.capitalize()} ✗")
+        
+        with col2:
+            # Input field for API key
+            api_key = st.text_input(
+                f"{service_name.capitalize()} API Key",
+                type="password",
+                key=f"input_{service_name_lower}"
+            )
+            
+            # Save button
+            if st.button(f"Save {service_name.capitalize()} API Key", key=f"save_{service_name_lower}"):
+                if api_key:
+                    save_api_key(service_name_lower, api_key)
+                else:
+                    st.error("Please enter an API key.")
+    
+    # API Documentation links
+    st.subheader("API Documentation")
+    st.markdown("""
+    - [ZeroBounce API](https://www.zerobounce.net/docs/)
+    - [MailboxLayer API](https://mailboxlayer.com/documentation)
+    - [NeutrinoAPI](https://www.neutrinoapi.com/api/email-validate/)
+    - [Spokeo API](https://www.spokeo.com/)
+    - [Hunter.io API](https://hunter.io/api-documentation)
+    """)
 
-                # Email volume over time
-                st.subheader("Email Volume Over Time")
-                volume_chart = plot_email_volume_over_time(filtered_df)
-                st.plotly_chart(volume_chart, use_container_width=True)
+else:  # Help
+    st.title("Help & Documentation")
+    
+    st.header("Email Verification System")
+    st.write("""
+    This application provides email verification functionality using multiple
+    verification services, allowing you to validate email addresses and manage
+    email lists.
+    """)
+    
+    st.header("Features")
+    st.markdown("""
+    - **Single Email Verification**: Verify individual email addresses using one or more services
+    - **Bulk Verification**: Verify multiple email addresses at once
+    - **Email List Management**: Create and manage lists of email addresses
+    - **Service Integration**: Use multiple verification services for better accuracy
+    """)
+    
+    st.header("Verification Services")
+    st.markdown("""
+    The system integrates with the following email verification services:
+    
+    1. **ZeroBounce** - Comprehensive email validation service
+    2. **MailboxLayer** - Simple and effective email validation API
+    3. **NeutrinoAPI** - Provides detailed email validation information
+    4. **Spokeo** - People search service with email verification capabilities
+    5. **Hunter.io** - Email verification and domain search service
+    
+    To use these services, you need to configure API keys in the "API Keys" section.
+    """)
+    
+    st.header("Getting Started")
+    st.markdown("""
+    1. Configure API keys for one or more verification services
+    2. Start verifying emails or create email lists
+    3. Use bulk verification for larger datasets
+    
+    For bulk operations, prepare a CSV file with at least an "email" column.
+    """)
 
-                # Senders and categories
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("Top Email Senders")
-                    sender_chart = plot_sender_distribution(filtered_df)
-                    st.plotly_chart(sender_chart, use_container_width=True)
-
-                with col2:
-                    st.subheader("Email Categories")
-                    category_chart = plot_email_categories(filtered_df)
-                    st.plotly_chart(category_chart, use_container_width=True)
-
-                # Hour of day distribution
-                st.subheader("Email Activity by Hour")
-                hourly_chart = plot_hourly_distribution(filtered_df)
-                st.plotly_chart(hourly_chart, use_container_width=True)
-
-                # Word cloud of email subjects
-                st.subheader("Common Words in Email Subjects")
-                word_cloud = plot_word_cloud(filtered_df)
-                st.pyplot(word_cloud)
-
-                # Response times analysis
-                st.subheader("Response Time Analysis")
-                response_chart = plot_response_times(filtered_df)
-                st.plotly_chart(response_chart, use_container_width=True)
-
-                # Raw data table (expandable)
-                with st.expander("View Raw Email Data"):
-                    st.dataframe(filtered_df)
-
+# Initialize database on startup
 if __name__ == "__main__":
-    main()
+    # Check for environment folder
+    if not os.path.exists(".streamlit"):
+        os.makedirs(".streamlit")
+    
+    # Create Streamlit config
+    if not os.path.exists(".streamlit/config.toml"):
+        with open(".streamlit/config.toml", "w") as f:
+            f.write("""
+[server]
+headless = true
+address = "0.0.0.0"
+port = 5000
+            """)
