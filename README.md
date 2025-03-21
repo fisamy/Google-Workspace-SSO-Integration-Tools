@@ -1,19 +1,24 @@
-# 1Password SSO Configuration with Google Cloud
+# Google Workspace SSO Integration Tools
 
-This repository contains scripts to automate the configuration of 1Password Single Sign-On (SSO) with Google Cloud. The scripts help you set up the 1Password SCIM Bridge on Google Cloud Platform and configure Google Identity integration.
+This project contains tools for automating SSO configuration and integration with Google Workspace, including 1Password SSO setup and Gmail API integration.
+
+## Features
+
+- 1Password SSO configuration with Google Cloud
+- Google Workspace SAML application setup
+- Gmail API integration
+- Streamlit dashboard interface
 
 ## Prerequisites
 
 - Google Cloud Platform account with administrative access
 - Google Workspace Administrator access
-- 1Password Business or Enterprise account with SSO capabilities
-- `gcloud` CLI installed and configured
-- Python 3.6+ installed
+- Python 3.11+
+- Required Python packages (see `pyproject.toml`)
 
 ## Getting Started
 
 ### Option 1: Using the Shell Script
-
 1. Make the script executable:
 
 ```bash
@@ -29,7 +34,6 @@ chmod +x 1password_sso_setup.sh
 ```
 
 ### Option 2: Using the Python Script
-
 1. Install required dependencies:
 
 ```bash
@@ -103,3 +107,35 @@ If you encounter issues during setup:
 4. Test the SCIM Bridge endpoint with a curl request to check if it's responding
 
 For more detailed troubleshooting, refer to the 1Password SCIM Bridge documentation.
+
+## Installation
+
+1. Clone the repository
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+Start the Streamlit application:
+```bash
+streamlit run app.py
+```
+
+## Configuration
+
+1. Set up Google Cloud credentials
+2. Configure necessary environment variables
+3. Follow the SSO setup instructions in the application
+
+## Scripts
+
+- `app.py`: Main Streamlit application
+- `1password_sso_setup.py`: 1Password SSO configuration
+- `google_workspace_setup.py`: Google Workspace configuration
+- `gmail_api.py`: Gmail API integration
+
+## License
+
+MIT License
