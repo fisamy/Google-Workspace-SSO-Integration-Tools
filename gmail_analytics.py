@@ -50,6 +50,10 @@ account_manager = GmailAccountManager()
 cookie_manager = CookieManager()
 cookie_ui = CookieConsentUI(cookie_manager)
 
+# Initialize business analyzer
+from business_analyzer import BusinessAnalyzer
+business_analyzer = None
+
 # Set page configuration
 st.set_page_config(
     page_title="Gmail Analytics Dashboard",
@@ -269,7 +273,8 @@ else:
         "Senders", 
         "Time Patterns",
         "Content Analysis",
-        "Response Times"
+        "Response Times",
+        "Business Insights"
     ])
     
     # Email Volume tab
@@ -423,6 +428,53 @@ else:
                     )
         else:
             st.info("No response time data available. This could be because there are no conversation threads in the selected data range.")
+            
+    # Business Insights tab
+    with tabs[6]:
+        st.subheader("Business Analytics")
+        
+        if not df.empty:
+            business_analyzer = BusinessAnalyzer(df)
+            metrics = business_analyzer.get_business_metrics()
+            insights = business_analyzer.generate_business_insights()
+            
+            # Display key metrics
+            st.write("### Key Metrics")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if "communication_volume" in metrics:
+                    vol = metrics["communication_volume"]
+                    st.metric("Daily Volume", f"{vol.get('avg_daily_volume', 0):.1f}")
+                    st.metric("S/R Ratio", f"{vol.get('sent_received_ratio', 0):.1f}%")
+            
+            with col2:
+                if "response_efficiency" in metrics:
+                    eff = metrics["response_efficiency"]
+                    st.metric("Avg Response Time", f"{eff.get('avg_response_time', 0):.1f}h")
+                    st.metric("Response Rate", f"{eff.get('response_rate', 0):.1f}%")
+            
+            with col3:
+                if "contact_engagement" in metrics:
+                    eng = metrics["contact_engagement"]
+                    st.metric("Total Contacts", eng.get('total_contacts', 0))
+                    st.metric("Avg Interactions", f"{eng.get('avg_interactions_per_contact', 0):.1f}")
+            
+            # Display insights
+            st.write("### Key Insights")
+            for insight in insights:
+                st.write(f"• {insight}")
+            
+            # Display domain analysis
+            if "domain_analysis" in metrics:
+                st.write("### Domain Distribution")
+                domain_data = pd.DataFrame(
+                    list(metrics["domain_analysis"]["top_domains"].items()),
+                    columns=["Domain", "Count"]
+                )
+                st.bar_chart(domain_data.set_index("Domain"))
+        else:
+            st.info("Load email data to view business insights.")
 
 # Create Streamlit config file if it doesn't exist
 if __name__ == "__main__":
