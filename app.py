@@ -51,16 +51,24 @@ def main():
                 st.rerun()
         else:
             st.info("Please authenticate with Gmail to analyze your email data")
+            client_id = st.text_input("Client ID", type="password", help="Enter your Google OAuth Client ID")
+            client_secret = st.text_input("Client Secret", type="password", help="Enter your Google OAuth Client Secret")
+            
             if st.button("Authenticate with Gmail"):
-                with st.spinner("Authenticating..."):
-                    try:
-                        st.session_state.creds = authenticate_gmail()
-                        st.session_state.service = get_gmail_service(st.session_state.creds)
-                        st.session_state.authenticated = True
-                        st.success("Authentication successful!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Authentication failed: {str(e)}")
+                if not client_id or not client_secret:
+                    st.error("Please enter both Client ID and Client Secret")
+                else:
+                    with st.spinner("Authenticating..."):
+                        try:
+                            os.environ["GOOGLE_CLIENT_ID"] = client_id
+                            os.environ["GOOGLE_CLIENT_SECRET"] = client_secret
+                            st.session_state.creds = authenticate_gmail()
+                            st.session_state.service = get_gmail_service(st.session_state.creds)
+                            st.session_state.authenticated = True
+                            st.success("Authentication successful!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Authentication failed: {str(e)}")
         
         if st.session_state.authenticated:
             st.header("Data Fetching")
