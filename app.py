@@ -554,39 +554,112 @@ else:  # Help
     
     st.header("Email Verification System")
     st.write("""
-    This application provides email verification functionality using multiple
-    verification services, allowing you to validate email addresses and manage
-    email lists.
+    This application provides comprehensive email verification functionality using multiple
+    verification services to validate email addresses and manage email lists efficiently.
+    Perfect for maintaining clean contact lists and validating email addresses before sending campaigns.
     """)
     
     st.header("Features")
     st.markdown("""
-    - **Single Email Verification**: Verify individual email addresses using one or more services
-    - **Bulk Verification**: Verify multiple email addresses at once
-    - **Email List Management**: Create and manage lists of email addresses
-    - **Service Integration**: Use multiple verification services for better accuracy
+    - **Single Email Verification**
+        - Verify individual email addresses
+        - Choose specific verification service or use all available services
+        - View detailed validation results and scores
+        - Access verification history
+        
+    - **Bulk Verification**
+        - Upload CSV files for bulk verification
+        - Process up to 100 emails simultaneously
+        - Download verification results as CSV
+        - View aggregate validation statistics
+        
+    - **Email List Management**
+        - Create and manage multiple email lists
+        - Import/Export lists via CSV
+        - Add custom fields (name, company, position)
+        - Track list creation and update dates
+        
+    - **Service Integration**
+        - Multiple verification services for accuracy
+        - Aggregated validation scores
+        - Detailed validation results per service
     """)
     
     st.header("Verification Services")
     st.markdown("""
-    The system integrates with the following email verification services:
+    Integrated verification services with their specialties:
     
-    1. **ZeroBounce** - Comprehensive email validation service
-    2. **MailboxLayer** - Simple and effective email validation API
-    3. **NeutrinoAPI** - Provides detailed email validation information
-    4. **Spokeo** - People search service with email verification capabilities
-    5. **Hunter.io** - Email verification and domain search service
+    1. **ZeroBounce**
+        - Comprehensive email validation
+        - Catch-all domain detection
+        - MX record validation
+        - SMTP verification
+        
+    2. **MailboxLayer**
+        - Syntax validation
+        - Typo detection
+        - Disposable email detection
+        - Role-based email check
+        
+    3. **NeutrinoAPI**
+        - SMTP deep validation
+        - Domain quality scoring
+        - Abuse detection
+        - Location verification
+        
+    4. **Spokeo**
+        - People search capabilities
+        - Social media verification
+        - Historical email data
+        - Owner information
+        
+    5. **Hunter.io**
+        - Domain email verification
+        - Company email formats
+        - Professional email scoring
+        - B2B email validation
     
-    To use these services, you need to configure API keys in the "API Keys" section.
+    Configure API keys in the "API Keys" section to enable these services.
     """)
     
-    st.header("Getting Started")
+    st.header("Usage Guide")
     st.markdown("""
-    1. Configure API keys for one or more verification services
-    2. Start verifying emails or create email lists
-    3. Use bulk verification for larger datasets
+    1. **Initial Setup**
+        - Navigate to "API Keys" section
+        - Configure at least one verification service
+        - Test the connection with a sample email
+        
+    2. **Single Email Verification**
+        - Enter email address
+        - Select verification service(s)
+        - View detailed results and history
+        
+    3. **Bulk Verification**
+        - Prepare CSV with required columns
+        - Upload file (max 100 emails per batch)
+        - Download verification results
+        
+    4. **List Management**
+        - Create lists with meaningful names
+        - Import existing contacts
+        - Add/Update entries manually
+        - Export lists for backup
+    """)
     
-    For bulk operations, prepare a CSV file with at least an "email" column.
+    st.header("CSV Format")
+    st.markdown("""
+    For bulk operations and list imports, prepare CSV files with these columns:
+    - email (required)
+    - first_name
+    - last_name
+    - company
+    - position
+    
+    Example:
+    ```
+    email,first_name,last_name,company,position
+    john@example.com,John,Doe,ACME Inc,Manager
+    ```
     """)
 
 # Initialize database on startup
