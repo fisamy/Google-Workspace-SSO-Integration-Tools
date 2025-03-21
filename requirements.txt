@@ -9,3 +9,10 @@ plotly>=6.0.1
 requests>=2.32.3
 streamlit>=1.43.2
 wordcloud>=1.9.4
+aiohttp
+asyncio
+pandas
+psycopg2-binary
+python-dotenv
+requests
+sqlalchemy
