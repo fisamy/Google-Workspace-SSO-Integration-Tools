@@ -1,0 +1,33 @@
+Cookie Management
+
+Purpose: The Cookie Management feature is designed to enhance user convenience and maintain session activity by securely storing cookies associated with users' Gmail accounts.
+
+Functionality:
+
+    Storing Cookies:
+        When a user logs into their Gmail account through the application, the system captures and stores the authentication cookies.
+        These cookies are securely stored within the system, ensuring that the user's credentials remain protected.
+
+    Session Maintenance:
+        By storing the cookies, the system can maintain the user's session activity. This means that users do not need to re-enter their email and password every time they access their Gmail account through the application.
+        The stored cookies allow for seamless access to the Gmail account, providing a smoother user experience.
+
+    Automatic Login:
+        On subsequent visits, the system utilizes the stored cookies to automatically log the user into their Gmail account.
+        This eliminates the need for repeated authentication, saving time and effort for the user.
+
+    Security Considerations:
+        The cookies are stored in a secure manner to prevent unauthorized access.
+        The system ensures that the cookies are only used for the intended purpose of maintaining session activity and automatic login.
+
+    User Control:
+        Users have control over their stored cookies and can manage them through the application's settings.
+        They can choose to delete the stored cookies if they wish to log out or switch accounts.
+
+Benefits:
+
+    Convenience: Users can access their Gmail accounts without repeatedly entering their credentials.
+    Efficiency: Maintains session activity, allowing users to continue their work without interruptions.
+    Security: Ensures that user credentials are protected while providing a seamless login experience.
+
+Overall, the Cookie Management feature aims to provide a balance between user convenience and security by securely storing authentication cookies and maintaining session activity for Gmail accounts.
