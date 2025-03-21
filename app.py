@@ -35,6 +35,22 @@ if "service" not in st.session_state:
 if "fetch_count" not in st.session_state:
     st.session_state.fetch_count = 500
 
+# Initialize cookie manager
+from cookie_manager import CookieManager
+cookie_manager = CookieManager()
+
+# Restore authentication from cookie if available
+if not st.session_state.authenticated:
+    auth_cookie = cookie_manager.get_cookie('gmail_auth')
+    if auth_cookie:
+        try:
+            auth_data = json.loads(auth_cookie)
+            os.environ["GOOGLE_CLIENT_ID"] = auth_data['client_id']
+            os.environ["GOOGLE_CLIENT_SECRET"] = auth_data['client_secret']
+            st.session_state.authenticated = True
+        except:
+            cookie_manager.delete_cookie('gmail_auth')
+
 def main():
     st.title("Gmail Analytics Dashboard")
     
@@ -94,6 +110,12 @@ def main():
                             st.session_state.creds = authenticate_gmail()
                             st.session_state.service = get_gmail_service(st.session_state.creds)
                             st.session_state.authenticated = True
+                            # Save authentication data in cookie
+                            auth_data = {
+                                'client_id': client_id,
+                                'client_secret': client_secret
+                            }
+                            cookie_manager.set_cookie('gmail_auth', json.dumps(auth_data))
                             st.success("Authentication successful!")
                             st.rerun()
                         except Exception as e:
