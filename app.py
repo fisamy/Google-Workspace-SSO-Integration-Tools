@@ -244,16 +244,18 @@ def main():
                 st.markdown("### 📊 Key Metrics")
                 metrics_container = st.container()
                 with metrics_container:
-                    col1, col2, col3, col4 = st.columns(4)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("📬 Total Emails", metrics["total_emails"], 
                                 delta=f"{metrics['total_emails']-metrics['total_emails_prev']}")
+                        st.metric("📈 Daily Average", f"{metrics['avg_daily_volume']:.1f}")
                     with col2:
                         st.metric("📤 Sent Emails", metrics["sent_emails"])
+                        st.metric("📨 Avg Message Length", f"{filtered_df['body'].str.len().mean():.0f} chars")
                     with col3:
                         st.metric("📥 Received Emails", metrics["received_emails"])
-                    with col4:
-                        st.metric("📈 Daily Average", f"{metrics['avg_daily_volume']:.1f}")
+                        response_rate = (metrics["sent_emails"] / metrics["received_emails"] * 100) if metrics["received_emails"] > 0 else 0
+                        st.metric("📫 Response Rate", f"{response_rate:.1f}%")
                 st.markdown("---")
                 
                 # Visualizations
