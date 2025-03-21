@@ -31,11 +31,15 @@ A Streamlit application for email verification and list management using multipl
 
 ## Installation
 
-1. Clone the repository
-2. Install dependencies:
-```bash
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/fisamy/Google-Workspace-SSO-Integration-Tools.git
+   cd Google-Workspace-SSO-Integration-Tools
+
+python3 -m venv env
+source env/bin/activate  # On Windows use `env\Scripts\activate`
+
 pip install -r requirements.txt
-```
 
 ## Usage
 
