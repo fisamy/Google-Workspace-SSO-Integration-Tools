@@ -16,6 +16,8 @@ import tempfile
 from database import init_db, add_default_services
 from email_verification_manager import EmailVerificationManager
 from email_list_manager import EmailListManager
+from cookie_manager import CookieManager
+from cookie_consent_ui import CookieConsentUI
 
 # Set up logging
 logging.basicConfig(
@@ -30,6 +32,8 @@ add_default_services()
 # Initialize managers
 verification_manager = EmailVerificationManager()
 list_manager = EmailListManager()
+cookie_manager = CookieManager()
+cookie_ui = CookieConsentUI(cookie_manager)
 
 # Set page configuration
 st.set_page_config(
@@ -148,12 +152,21 @@ def display_verification_result(result):
         with st.expander("Detailed Information"):
             st.json(result['details'])
 
+# Display cookie banner (if needed)
+cookie_ui.display_cookie_banner()
+
+# Handle cookie settings page if active
+cookie_ui.handle_cookie_settings()
+
 # Sidebar menu
 st.sidebar.title("Email Verification System")
 menu = st.sidebar.selectbox(
     "Navigation",
-    ["Single Email Verification", "Bulk Verification", "Email Lists", "API Keys", "Help"]
+    ["Single Email Verification", "Bulk Verification", "Email Lists", "API Keys", "Help", "Cookie Settings"]
 )
+
+# Add cookie settings button to sidebar
+cookie_ui.display_cookie_settings_button("Manage Cookie Settings", "sidebar")
 
 # Main content
 if menu == "Single Email Verification":
